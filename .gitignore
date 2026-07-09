@@ -1,0 +1,33 @@
+# Python/cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local environments
+.venv/
+.venv310/
+
+# Generated artifacts
+runs/*
+!runs/README.md
+*.mp4
+*.avi
+*.mov
+*.png
+*.jpg
+*.jpeg
+*.csv
+
+# Local model and simulator assets
+models/*.pt
+models/**/*.pt
+models/**/*.pth
+third_party/
+
+# Logs/crash output
+*.log
+core
+core.*
+Saved/

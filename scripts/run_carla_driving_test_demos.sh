@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+WORKSPACE="$(cd "$ROOT/.." && pwd)"
+PYTHON="$ROOT/.venv310/bin/python"
+
+if [[ ! -x "$PYTHON" ]]; then
+  echo "Python venv not found:" >&2
+  echo "  $PYTHON" >&2
+  exit 1
+fi
+
+cd "$WORKSPACE"
+exec "$PYTHON" "$ROOT/experiments/run_carla_driving_test_demos.py" \
+  --out "$ROOT/runs/carla_driving_test_demos" \
+  --host "${CARLA_HOST:-127.0.0.1}" \
+  --port "${CARLA_PORT:-2000}" \
+  --town "${CARLA_TOWN:-}" \
+  --width "${CARLA_WIDTH:-1280}" \
+  --height "${CARLA_HEIGHT:-720}" \
+  --fps "${CARLA_FPS:-20}" \
+  --timeout-s "${CARLA_TIMEOUT_S:-60}" \
+  --lane-departure-limit-m "${CARLA_LANE_DEPARTURE_LIMIT_M:-5.0}" \
+  "$@"
