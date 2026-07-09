@@ -68,6 +68,108 @@ runs/             generated experiment artifacts
 state. Keep source/docs/scripts under version control; do not commit generated
 videos, CARLA archives, venvs, or downloaded model binaries.
 
+## Cross-Machine Setup
+
+The GitHub repository should contain only source code, docs, and scripts. It
+does not contain the local runtime state needed to run the demos:
+
+```text
+.venv310/       Python environment, ignored
+models/         YOLO/TriLiteNet weights, ignored
+third_party/    CARLA/ManiSkill3/TriLiteNet checkouts, ignored
+runs/           generated videos/traces/metrics, ignored except runs/README.md
+```
+
+On a new machine, clone the repo:
+
+```bash
+git clone git@github.com:<your-user>/llm-steering-skill.git
+cd llm-steering-skill
+```
+
+Create the Python environment:
+
+```bash
+python3.10 -m venv .venv310
+source .venv310/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements-stage1.txt
+```
+
+If PyTorch wheels need a specific CUDA index on the new machine, install
+`torch`/`torchvision` first with the matching command from pytorch.org, then run
+the requirements install again.
+
+Restore local assets. The most reliable path is to copy them from this working
+machine:
+
+```bash
+mkdir -p models third_party
+
+rsync -a <old-machine>:/home/xingshu/workspaces/fys/stage1_closed_loop_driving/models/ models/
+rsync -a <old-machine>:/home/xingshu/workspaces/fys/stage1_closed_loop_driving/third_party/carla/ third_party/carla/
+rsync -a <old-machine>:/home/xingshu/workspaces/fys/stage1_closed_loop_driving/third_party/trilitenet/ third_party/trilitenet/
+rsync -a <old-machine>:/home/xingshu/workspaces/fys/stage1_closed_loop_driving/third_party/maniskill3/ third_party/maniskill3/
+```
+
+Required assets after restore:
+
+```text
+models/yolo11n.pt
+models/trilitenet/small.pth
+third_party/carla/CarlaUE4.sh
+third_party/trilitenet/lib/models/TriLiteNet.py
+```
+
+Optional but useful:
+
+```text
+models/trilitenet/base.pth
+models/trilitenet/nano.pth
+third_party/maniskill3
+```
+
+If you cannot copy CARLA from another machine, use the local download script:
+
+```bash
+scripts/download_carla_server_parallel.sh
+```
+
+If you cannot copy TriLiteNet source, clone it:
+
+```bash
+mkdir -p third_party
+git clone https://github.com/chequanghuy/TriLiteNet.git third_party/trilitenet
+```
+
+Then place the TriLiteNet weights under `models/trilitenet/`.
+
+For LLM policy generation, configure an OpenAI-compatible endpoint:
+
+```bash
+export STAGE1_LLM_BASE_URL="https://your-openai-compatible-endpoint/v1"
+export STAGE1_LLM_API_KEY="..."
+export STAGE1_LLM_MODEL="..."
+```
+
+The deterministic smoke does not need an LLM key. The `--policy-generator llm`
+path does.
+
+After setup, validate in this order:
+
+```bash
+MPLCONFIGDIR=/tmp/matplotlib .venv310/bin/python \
+  experiments/run_trilitenet_lane_smoke.py \
+  --out runs/model_perception_smoke/trilitenet_lane_offline_smoke
+
+CARLA_QUALITY=Low CARLA_RENDER_OFFSCREEN=0 CARLA_PORT=2000 \
+  scripts/start_carla_server.sh -stdout -FullStdOutLogOutput
+
+scripts/check_carla_rpc.sh
+```
+
+Once those pass, run the canonical closed-loop smoke from the next section.
+
 ## Main Commands
 
 Use the project Python 3.10 environment:
