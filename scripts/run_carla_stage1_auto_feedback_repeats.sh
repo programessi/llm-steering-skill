@@ -2,13 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PYTHON="$ROOT/.venv310/bin/python"
-
-if [[ ! -x "$PYTHON" ]]; then
-  echo "Python venv not found:" >&2
-  echo "  $PYTHON" >&2
-  exit 1
-fi
+source "$ROOT/scripts/_select_python.sh"
 
 cd "$ROOT"
 export STAGE1_LLM_BASE_URL="${STAGE1_LLM_BASE_URL:-${OPENAI_BASE_URL:-${X2_AGENT_LLM_BASE_URL:-${AXONHUB_BASE_URL:-https://ai.zxcoding.top/v1}}}}"

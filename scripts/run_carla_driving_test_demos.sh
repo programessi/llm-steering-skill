@@ -3,13 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKSPACE="$(cd "$ROOT/.." && pwd)"
-PYTHON="$ROOT/.venv310/bin/python"
-
-if [[ ! -x "$PYTHON" ]]; then
-  echo "Python venv not found:" >&2
-  echo "  $PYTHON" >&2
-  exit 1
-fi
+source "$ROOT/scripts/_select_python.sh"
 
 cd "$WORKSPACE"
 exec "$PYTHON" "$ROOT/experiments/run_carla_driving_test_demos.py" \

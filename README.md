@@ -14,6 +14,183 @@ DrivingState
 
 策略代码不能直接控制车辆底层连续转向，只能调用受限的 steering primitive。这样后续可以把当前的 CARLA oracle steering executor 替换成机器人、阀门、方向盘 skill，而不需要改 LLM policy 的接口。
 
+## 0. 直接复制粘贴：安装和验证
+
+下面先给命令。后面的章节解释每条命令在复现什么。
+
+### 0.1 最小安装：不装 CARLA、不装模型、不需要 LLM key
+
+这个流程用于确认仓库源码能跑通。
+
+```bash
+git clone https://github.com/programessi/llm-steering-skill.git
+cd llm-steering-skill
+
+python3.10 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements-minimal.txt
+
+MPLCONFIGDIR=/tmp/matplotlib scripts/run_robot_steering_skill_bench.sh \
+  --out runs/robot_steering_skill_bench_smoke
+
+MPLCONFIGDIR=/tmp/matplotlib python experiments/run_stage1_demo.py \
+  --task lane_keeping \
+  --state-source perceived \
+  --policy-mode llm_feedback \
+  --out runs/stage1_demo_smoke
+```
+
+成功时应看到：
+
+```text
+robot steering bench: success_rate=1.0
+stage1 demo: success=true
+```
+
+项目脚本会自动找 Python，优先级是：
+
+```text
+PYTHON 环境变量
+-> .venv310/bin/python
+-> .venv/bin/python
+-> python
+```
+
+所以你可以用 `.venv`，也可以用 `.venv310`。如果你想显式指定：
+
+```bash
+PYTHON="$PWD/.venv/bin/python" scripts/run_robot_steering_skill_bench.sh
+```
+
+### 0.2 全量 Python 依赖：准备跑 CARLA / YOLO / TriLiteNet / ManiSkill
+
+如果要跑完整实验，在同一个 venv 里继续安装全量依赖：
+
+```bash
+source .venv/bin/activate
+python -m pip install -r requirements-stage1.txt
+```
+
+如果你的机器 CUDA / PyTorch 版本比较特殊，先按 pytorch.org 的命令安装匹配的 `torch` / `torchvision`，再执行：
+
+```bash
+python -m pip install -r requirements-stage1.txt
+```
+
+检查关键包是否能 import：
+
+```bash
+python - <<'PY'
+mods = ["numpy", "cv2", "matplotlib", "requests", "torch", "torchvision", "ultralytics", "carla", "gymnasium", "mani_skill", "sapien"]
+for name in mods:
+    try:
+        mod = __import__(name)
+        print(name, getattr(mod, "__version__", "ok"))
+    except Exception as exc:
+        print(name, "FAILED", type(exc).__name__, exc)
+PY
+```
+
+### 0.3 安装 CARLA server
+
+CARLA Python client 来自 pip 包，CARLA server 是单独的大二进制，约 8 GB。
+
+```bash
+mkdir -p third_party
+scripts/download_carla_server_parallel.sh
+chmod +x third_party/carla/CarlaUE4.sh
+```
+
+启动 CARLA server：
+
+```bash
+CARLA_QUALITY=Low CARLA_RENDER_OFFSCREEN=0 CARLA_PORT=2000 \
+  scripts/start_carla_server.sh -stdout -FullStdOutLogOutput
+```
+
+另开一个终端检查 RPC：
+
+```bash
+cd llm-steering-skill
+source .venv/bin/activate
+scripts/check_carla_rpc.sh
+```
+
+期望输出：
+
+```json
+{
+  "ok": true,
+  "server_version": "0.9.15"
+}
+```
+
+### 0.4 安装视觉模型资产
+
+YOLO11n 权重可以让 Ultralytics 自动下载，然后放到项目约定路径：
+
+```bash
+source .venv/bin/activate
+mkdir -p models
+python - <<'PY'
+from ultralytics import YOLO
+YOLO("yolo11n.pt")
+PY
+mv yolo11n.pt models/yolo11n.pt
+```
+
+TriLiteNet 源码：
+
+```bash
+mkdir -p third_party
+git clone https://github.com/chequanghuy/TriLiteNet.git third_party/trilitenet
+```
+
+TriLiteNet 权重目前没有随本仓库公开托管，需要你从已有机器或权重来源复制：
+
+```bash
+mkdir -p models/trilitenet
+cp /path/to/small.pth models/trilitenet/small.pth
+```
+
+如果你从作者旧机器复制完整资产：
+
+```bash
+mkdir -p models third_party
+rsync -a <old-machine>:/home/xingshu/workspaces/fys/stage1_closed_loop_driving/models/ models/
+rsync -a <old-machine>:/home/xingshu/workspaces/fys/stage1_closed_loop_driving/third_party/carla/ third_party/carla/
+rsync -a <old-machine>:/home/xingshu/workspaces/fys/stage1_closed_loop_driving/third_party/trilitenet/ third_party/trilitenet/
+rsync -a <old-machine>:/home/xingshu/workspaces/fys/stage1_closed_loop_driving/third_party/maniskill3/ third_party/maniskill3/
+```
+
+### 0.5 跑 CARLA oracle smoke
+
+这个不需要 YOLO/TriLiteNet，只需要 CARLA server 正在运行：
+
+```bash
+MPLCONFIGDIR=/tmp/matplotlib scripts/run_carla_rendered_demo.sh \
+  --out runs/carla_rendered_demo_repro
+```
+
+### 0.6 跑完整 CARLA + TriLiteNet + YOLO smoke
+
+这个需要 CARLA server、YOLO 权重、TriLiteNet 源码和 TriLiteNet 权重：
+
+```bash
+MPLCONFIGDIR=/tmp/matplotlib scripts/run_carla_stage1_auto_feedback_repeats.sh \
+  --task right_angle_left \
+  --trials 1 \
+  --policy-generator deterministic \
+  --steering-skill oracle \
+  --perception-source trilitenet_lane_yolo_marker \
+  --visual-marker-distance-m 8.0 \
+  --visual-marker-lateral-offset-m 2.2 \
+  --visual-marker-real-height-m 2.0 \
+  --timeout-s 120 \
+  --out runs/model_perception_smoke/right_angle_left_deterministic_trilitenet_lane_yolo_marker_repro
+```
+
 ## 现在从 GitHub 能复现什么
 
 GitHub 仓库只包含源码、脚本和文档，不包含本地大资产。
@@ -21,7 +198,7 @@ GitHub 仓库只包含源码、脚本和文档，不包含本地大资产。
 被刻意排除的内容包括：
 
 ```text
-.venv310/       Python 虚拟环境
+.venv/ 或 .venv310/   Python 虚拟环境
 models/         YOLO / TriLiteNet 权重
 third_party/    CARLA / TriLiteNet / ManiSkill3 源码或二进制
 runs/           视频、trace、summary 等实验产物
@@ -68,13 +245,13 @@ runs/             实验输出目录，只有 runs/README.md 进 git
 git clone https://github.com/programessi/llm-steering-skill.git
 cd llm-steering-skill
 
-python3.10 -m venv .venv310
-source .venv310/bin/activate
+python3.10 -m venv .venv
+source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements-minimal.txt
 ```
 
-如果机器没有 `python3.10`，可以先用系统里已有的 Python 3.10 创建环境。CARLA 0.9.15 路径建议固定 Python 3.10。
+如果机器没有 `python3.10`，可以先用系统里已有的 Python 3.10 创建环境。CARLA 0.9.15 路径建议固定 Python 3.10。项目脚本同时兼容 `.venv` 和 `.venv310`。
 
 ### 1.2 跑 robot steering skill bench
 
@@ -104,7 +281,7 @@ SteeringSkillCommand
 ### 1.3 跑 kinematic Stage-1 baseline
 
 ```bash
-MPLCONFIGDIR=/tmp/matplotlib .venv310/bin/python \
+MPLCONFIGDIR=/tmp/matplotlib python \
   experiments/run_stage1_baselines.py \
   --out runs/stage1_baselines_smoke \
   --video-task lane_keeping
@@ -146,7 +323,7 @@ MPLCONFIGDIR=/tmp/matplotlib scripts/generate_llm_policy_smoke.sh
 如果要跑 CARLA、YOLO/TriLiteNet 或 ManiSkill backend，再安装全量依赖：
 
 ```bash
-source .venv310/bin/activate
+source .venv/bin/activate
 python -m pip install -r requirements-stage1.txt
 ```
 
@@ -234,7 +411,7 @@ runs/model_perception_smoke/marker_frame.png
 示例：
 
 ```bash
-MPLCONFIGDIR=/tmp/matplotlib .venv310/bin/python \
+MPLCONFIGDIR=/tmp/matplotlib python \
   experiments/run_trilitenet_lane_smoke.py \
   --image /path/to/front_rgb.png \
   --out runs/model_perception_smoke/trilitenet_lane_offline_smoke \
