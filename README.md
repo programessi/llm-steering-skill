@@ -23,7 +23,7 @@ DrivingState
 这个流程用于确认仓库源码能跑通。
 
 ```bash
-git clone https://github.com/programessi/llm-steering-skill.git
+git clone --recurse-submodules https://github.com/programessi/llm-steering-skill.git
 cd llm-steering-skill
 
 python3.10 -m venv .venv
@@ -349,7 +349,7 @@ runs/             实验输出目录，只有 runs/README.md 进 git
 建议 Python 3.10。
 
 ```bash
-git clone https://github.com/programessi/llm-steering-skill.git
+git clone --recurse-submodules https://github.com/programessi/llm-steering-skill.git
 cd llm-steering-skill
 
 python3.10 -m venv .venv
