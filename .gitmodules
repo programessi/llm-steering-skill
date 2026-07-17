@@ -1,0 +1,8 @@
+[submodule "third_party/trilitenet"]
+	path = third_party/trilitenet
+	url = https://github.com/chequanghuy/TriLiteNet.git
+	ignore = untracked
+[submodule "third_party/maniskill3"]
+	path = third_party/maniskill3
+	url = https://github.com/haosulab/ManiSkill.git
+	ignore = untracked

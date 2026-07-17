@@ -143,9 +143,11 @@ class ManiSkillValveSteeringSkill:
             import torch
         except ModuleNotFoundError as exc:
             raise RuntimeError(
-                "ManiSkill valve backend is not available yet. Install ManiSkill3 "
-                "under third_party/maniskill3 and use --robot-skill-backend "
-                "kinematic_valve for the current bridge smoke."
+                "ManiSkill valve backend is not available. Install mani_skill==3.0.1 "
+                "and sapien==3.0.3 from requirements-stage1.txt, or install the "
+                "ManiSkill source tree under third_party/maniskill3 with "
+                "`python -m pip install -e third_party/maniskill3`. Use "
+                "--robot-skill-backend kinematic_valve for the no-ManiSkill bridge smoke."
             ) from exc
 
         self.torch = torch

@@ -24,7 +24,11 @@ runs/*
 models/*.pt
 models/**/*.pt
 models/**/*.pth
-third_party/
+third_party/*
+!third_party/trilitenet/
+!third_party/maniskill3/
+third_party/carla/
+third_party/downloads/
 
 # Logs/crash output
 *.log

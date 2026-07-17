@@ -92,7 +92,48 @@ for name in mods:
 PY
 ```
 
-### 0.3 安装 CARLA server
+### 0.3 安装第三方源码 submodules
+
+这个仓库用 git submodule 管理两个源码依赖：
+
+```text
+third_party/trilitenet   -> https://github.com/chequanghuy/TriLiteNet.git
+third_party/maniskill3   -> https://github.com/haosulab/ManiSkill.git
+```
+
+推荐 clone 时直接拉 submodules：
+
+```bash
+git clone --recurse-submodules https://github.com/programessi/llm-steering-skill.git
+cd llm-steering-skill
+```
+
+如果你已经普通 clone 了仓库：
+
+```bash
+git submodule update --init --recursive
+```
+
+检查 submodule commit：
+
+```bash
+git submodule status
+```
+
+当前固定的本地验证版本是：
+
+```text
+TriLiteNet: 4ac49477ff73dc9f45497ad4c397e92e6089436b
+ManiSkill:  42b68244c1497cef889b04c4f4a78aa01c927f4e
+```
+
+CARLA 不做 submodule。它是约 8GB 的二进制 release 包，继续用下载脚本放到：
+
+```text
+third_party/carla
+```
+
+### 0.4 安装 CARLA server
 
 CARLA Python client 来自 pip 包，CARLA server 是单独的大二进制，约 8 GB。
 
@@ -126,7 +167,21 @@ scripts/check_carla_rpc.sh
 }
 ```
 
-### 0.4 安装视觉模型资产
+如果 CARLA 官方下载慢，可以换镜像：
+
+```bash
+CARLA_SERVER_URL=https://your.mirror/CARLA_0.9.15.tar.gz \
+  scripts/download_carla_server_parallel.sh
+```
+
+如果你已经手动下载并解压了 CARLA，也可以直接指定路径：
+
+```bash
+export CARLA_ROOT=/path/to/CARLA_0.9.15
+CARLA_QUALITY=Low CARLA_PORT=2000 scripts/start_carla_server.sh
+```
+
+### 0.5 安装视觉模型资产
 
 YOLO11n 权重可以让 Ultralytics 自动下载，然后放到项目约定路径：
 
@@ -140,11 +195,10 @@ PY
 mv yolo11n.pt models/yolo11n.pt
 ```
 
-TriLiteNet 源码：
+TriLiteNet 源码由 submodule 提供。如果目录不存在，执行：
 
 ```bash
-mkdir -p third_party
-git clone https://github.com/chequanghuy/TriLiteNet.git third_party/trilitenet
+git submodule update --init --recursive third_party/trilitenet
 ```
 
 TriLiteNet 权重目前没有随本仓库公开托管，需要你从已有机器或权重来源复制：
@@ -154,17 +208,69 @@ mkdir -p models/trilitenet
 cp /path/to/small.pth models/trilitenet/small.pth
 ```
 
-如果你从作者旧机器复制完整资产：
+如果你从作者旧机器复制完整资产，模型权重和 CARLA 可以复制；submodule 源码建议仍用 `git submodule update --init --recursive`：
 
 ```bash
 mkdir -p models third_party
 rsync -a <old-machine>:/home/xingshu/workspaces/fys/stage1_closed_loop_driving/models/ models/
 rsync -a <old-machine>:/home/xingshu/workspaces/fys/stage1_closed_loop_driving/third_party/carla/ third_party/carla/
-rsync -a <old-machine>:/home/xingshu/workspaces/fys/stage1_closed_loop_driving/third_party/trilitenet/ third_party/trilitenet/
-rsync -a <old-machine>:/home/xingshu/workspaces/fys/stage1_closed_loop_driving/third_party/maniskill3/ third_party/maniskill3/
+git submodule update --init --recursive
 ```
 
-### 0.5 跑 CARLA oracle smoke
+### 0.6 安装 / 验证 ManiSkill valve backend
+
+如果只用已发布包，`requirements-stage1.txt` 已经安装：
+
+```text
+mani_skill==3.0.1
+sapien==3.0.3
+```
+
+验证 Python 包能 import：
+
+```bash
+source .venv/bin/activate
+python - <<'PY'
+import gymnasium as gym
+import mani_skill.envs  # noqa: F401
+import sapien
+print("mani_skill import ok")
+print("sapien", getattr(sapien, "__version__", "ok"))
+print("RotateValveLevel0-v1 registered:", "RotateValveLevel0-v1" in gym.registry)
+PY
+```
+
+如果你需要和作者本地完全一致的 ManiSkill 源码，使用 submodule：
+
+```bash
+git submodule update --init --recursive third_party/maniskill3
+python -m pip install -e third_party/maniskill3
+```
+
+验证 RotateValve 环境可以创建并读 valve qpos：
+
+```bash
+python - <<'PY'
+import gymnasium as gym
+import mani_skill.envs  # noqa: F401
+
+env = gym.make("RotateValveLevel0-v1", num_envs=1, obs_mode="state", render_mode=None)
+env.reset(seed=0)
+print("has_valve", hasattr(env.unwrapped, "valve"))
+print("valve_qpos", env.unwrapped.valve.qpos.detach().cpu().numpy().tolist())
+env.close()
+PY
+```
+
+注意：ManiSkill / Sapien 环境创建需要可用的 GPU/Vulkan/render device 权限。在无 GPU、无 Vulkan 或受限 sandbox 里，可能出现类似错误：
+
+```text
+RuntimeError: Failed to find a supported physical device
+```
+
+这表示设备/渲染后端不可用，不是本仓库 Python import 路径的问题。换到有 GPU/Vulkan/Sapien 权限的本机终端运行，或先使用不依赖 ManiSkill 的 `kinematic_valve` backend。
+
+### 0.7 跑 CARLA oracle smoke
 
 这个不需要 YOLO/TriLiteNet，只需要 CARLA server 正在运行：
 
@@ -173,7 +279,7 @@ MPLCONFIGDIR=/tmp/matplotlib scripts/run_carla_rendered_demo.sh \
   --out runs/carla_rendered_demo_repro
 ```
 
-### 0.6 跑完整 CARLA + TriLiteNet + YOLO smoke
+### 0.8 跑完整 CARLA + TriLiteNet + YOLO smoke
 
 这个需要 CARLA server、YOLO 权重、TriLiteNet 源码和 TriLiteNet 权重：
 
@@ -198,10 +304,11 @@ GitHub 仓库只包含源码、脚本和文档，不包含本地大资产。
 被刻意排除的内容包括：
 
 ```text
-.venv/ 或 .venv310/   Python 虚拟环境
-models/         YOLO / TriLiteNet 权重
-third_party/    CARLA / TriLiteNet / ManiSkill3 源码或二进制
-runs/           视频、trace、summary 等实验产物
+.venv/ 或 .venv310/      Python 虚拟环境
+models/                    YOLO / TriLiteNet 权重
+third_party/carla/          CARLA 二进制 server
+third_party/downloads/      CARLA 下载缓存
+runs/                      视频、trace、summary 等实验产物
 ```
 
 因此复现分成几个层级：
@@ -214,7 +321,7 @@ runs/           视频、trace、summary 等实验产物
 | TriLiteNet lane smoke | 否 | 是 | 否 | 需要额外资产 |
 | CARLA oracle steering smoke | 是 | 否 | 否 | 需要额外资产 |
 | CARLA + TriLiteNet + YOLO canonical smoke | 是 | 是 | 否 | 需要额外资产 |
-| ManiSkill valve backend smoke | 可选 CARLA | ManiSkill 环境 | 否 | 需要额外环境 |
+| ManiSkill valve backend smoke | 通常需要 CARLA | ManiSkill/Sapien render device | 否 | 需要额外环境 |
 
 如果只是检查仓库是否安装正确，先跑“GitHub-only 最小复现”。不要一开始就跑完整 CARLA + 模型感知闭环。
 
@@ -350,23 +457,28 @@ third_party/carla/CarlaUE4.sh
 third_party/trilitenet/lib/models/TriLiteNet.py
 ```
 
-可选但用于 valve backend / 更多实验：
+由 submodule 提供：
 
 ```text
+third_party/trilitenet
 third_party/maniskill3
+```
+
+可选但用于更多 TriLiteNet 实验：
+
+```text
 models/trilitenet/base.pth
 models/trilitenet/nano.pth
 ```
 
-如果你是在复现作者本机实验，最稳妥的方法是从旧机器复制：
+如果你是在复现作者本机实验，模型权重和 CARLA 可以从旧机器复制；源码依赖用 submodule：
 
 ```bash
 mkdir -p models third_party
 
 rsync -a <old-machine>:/home/xingshu/workspaces/fys/stage1_closed_loop_driving/models/ models/
 rsync -a <old-machine>:/home/xingshu/workspaces/fys/stage1_closed_loop_driving/third_party/carla/ third_party/carla/
-rsync -a <old-machine>:/home/xingshu/workspaces/fys/stage1_closed_loop_driving/third_party/trilitenet/ third_party/trilitenet/
-rsync -a <old-machine>:/home/xingshu/workspaces/fys/stage1_closed_loop_driving/third_party/maniskill3/ third_party/maniskill3/
+git submodule update --init --recursive
 ```
 
 如果不能复制 CARLA，可以用下载脚本：
@@ -375,11 +487,10 @@ rsync -a <old-machine>:/home/xingshu/workspaces/fys/stage1_closed_loop_driving/t
 scripts/download_carla_server_parallel.sh
 ```
 
-如果不能复制 TriLiteNet 源码，可以重新 clone：
+TriLiteNet 源码由 submodule 安装：
 
 ```bash
-mkdir -p third_party
-git clone https://github.com/chequanghuy/TriLiteNet.git third_party/trilitenet
+git submodule update --init --recursive third_party/trilitenet
 ```
 
 然后把 TriLiteNet 权重放到：
